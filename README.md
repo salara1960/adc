@@ -1,5 +1,5 @@
 ********************************************************************************
-**   adc - application ADC (with kernel device driver for ADC on AT91SAM9G20)
+##   adc - application ADC (with kernel device driver for ADC on AT91SAM9G20)
 ********************************************************************************
 
 ## Description
