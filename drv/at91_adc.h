@@ -11,6 +11,7 @@
 #ifndef AT91_ADC_H
 #define AT91_ADC_H
 
+
 #define 	AT91_ADC_CR			0x00		/* Control Register */
 #define		AT91_ADC_SWRST			(1 << 0)	/* Software Reset */
 #define		AT91_ADC_START			(1 << 1)	/* Start Conversion */

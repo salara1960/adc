@@ -81,6 +81,7 @@
 
 #define timi_def 10
 #define timi2_def 2
+#define def_chan_number 3
 
 #define ABOUT_MODULE "ADC driver support : open, close, ioctl, proc_fs_entry"
 
@@ -94,7 +95,7 @@ static struct proc_dir_entry *own_proc_node = NULL, *parent=NULL;
 //--------------------------------------------------------------------------------------
 static struct class *adc_class = NULL;
 
-static int my_dev_ready=0;
+static int my_dev_ready = 0;
 
 struct resource * adc_iomem_reg = NULL;
 static void __iomem *BaseAdrRAMADC = NULL;
@@ -102,15 +103,15 @@ static void __iomem *BaseAdrRAMADC = NULL;
 static void __iomem *at91_pioc_base = NULL;
 struct clk *at91_adc_clk;
 
-static unsigned char *ibuff=NULL;
-static unsigned char *ibuffw=NULL;
+static unsigned char *ibuff = NULL;
+static unsigned char *ibuffw = NULL;
 
 static unsigned int my_msec;
 static struct timer_list my_timer;
 
 static atomic_t varta;
 
-static int Major=0;
+static int Major = 0;
 module_param(Major, int, 0);
 static int Device_Open = 0;
 
@@ -118,8 +119,8 @@ struct rchan_sio {
   struct cdev cdev;
 };
 
-static int timi=timi_def;
-static int timi2=timi2_def;
+static int timi = timi_def;
+static int timi2 = timi2_def;
 
 static atomic_t start_adc;
 static atomic_t data_adc;
@@ -129,7 +130,7 @@ static unsigned int mir_cher;
 static unsigned int mir_chdr;
 static unsigned int mir_ier;
 static unsigned int mir_idr;
-static int chan_set=3, chan_set_in=3;
+static int chan_set = def_chan_number, chan_set_in = def_chan_number;
 
 //************************************************************
 //************************************************************
@@ -138,13 +139,13 @@ static int mux_chan(int chan, int operation)
 {
 int pin_chan;
 
-    if (chan<0 || chan>3) return -EINVAL;
+    if (chan < 0 || chan > 3) return -EINVAL;
 
     switch (chan) {
-	case 0: pin_chan=AT91_PIN_PC0; break;
-	case 1: pin_chan=AT91_PIN_PC1; break;
-	case 2: pin_chan=AT91_PIN_PC2; break;
-	case 3: pin_chan=AT91_PIN_PC3; break;
+	case 0: pin_chan = AT91_PIN_PC0; break;
+	case 1: pin_chan = AT91_PIN_PC1; break;
+	case 2: pin_chan = AT91_PIN_PC2; break;
+	case 3: pin_chan = AT91_PIN_PC3; break;
     	    default: return -EINVAL;
     }
     if (operation == 1)//chan_select
@@ -158,19 +159,19 @@ int pin_chan;
 //************************************************************
 int rd_proc(struct file *filp, char *buf, size_t count, loff_t *offp)
 {
-int data=-1;
-unsigned int data_v, cel, dro, ret=0;
+int data = -1;
+unsigned int data_v, cel, dro, ret = 0;
 
-    if (count>=PROC_COUNT) {
+    if (count >= PROC_COUNT) {
 
-	memset(ibuff,0,mem_buf);
+	memset(ibuff, 0, mem_buf);
 	if (atomic_read(&enable_adc)) {
-	    data=atomic_read(&data_adc);
-	    data_v=data*3222;
-	    cel=data_v/1000000;
+	    data = atomic_read(&data_adc);
+	    data_v = data * 3222;
+	    cel = data_v / 1000000;
 	    dro = (data_v % 1000000) / 1000;
-	    sprintf(ibuff,"ADC (%d) [%d,%03d v] (%d)\n",chan_set+1, cel, dro, data);
-	} else sprintf(ibuff,"\nADC (%d) no data\n",chan_set+1);
+	    sprintf(ibuff,"ADC (%d) [%d,%03d v] (%d)\n", chan_set + 1, cel, dro, data);
+	} else sprintf(ibuff,"\nADC (%d) no data\n", chan_set + 1);
 	ret = strlen(ibuff);
 	//printk(KERN_INFO "\nread_proc: order %d bytes (buffer_size=%d)\n", count, procfs_buffer_size);
 
@@ -184,12 +185,12 @@ unsigned int data_v, cel, dro, ret=0;
 //************************************************************
 int wr_proc(struct file *filp, char *buf, size_t count, loff_t *offp)
 {
-int len=count;
+int len = count;
 unsigned char bt;
 
-    if (len>mem_buf-1) len = mem_buf-1;
+    if (len > mem_buf-1) len = mem_buf - 1;
 
-    memset(ibuffw,0,mem_buf);
+    memset(ibuffw, 0, mem_buf);
 
     copy_from_user(ibuffw, buf, len);
     //printk(KERN_INFO "\nwrite_proc(%d): %s\n", count, ibuffw);
@@ -224,7 +225,7 @@ static void adc_reset(void)
 //************************************************************
 static void adc_init(int chan)//we work with channel 3
 {
-unsigned int data=0;
+unsigned int data = 0;
 
     data = (unsigned int)AT91_DEFAULT_CONFIG;	adc_write(data, AT91_ADC_MR);//set mode
 
@@ -242,8 +243,8 @@ static void adc_start_conv(int chan)
 {
 
     iowrite32(1 << chan, at91_pioc_base + 0x60);
-    mir_cher = (unsigned int)AT91_ADC_CH(chan); adc_write(mir_cher,AT91_ADC_CHER);// Enable Channel
-    mir_cr = (unsigned int)AT91_ADC_START; adc_write(mir_cr,AT91_ADC_CR);// Start the ADC
+    mir_cher = (unsigned int)AT91_ADC_CH(chan); adc_write(mir_cher, AT91_ADC_CHER);// Enable Channel
+    mir_cr = (unsigned int)AT91_ADC_START;      adc_write(mir_cr,   AT91_ADC_CR);// Start the ADC
     atomic_set(&start_adc, (int)1);
 
 }
@@ -256,14 +257,14 @@ static void adc_stop_conv(int chan)
 //************************************************************
 static int adc_data_ready(int chan)
 {
-int ret=-1;
+int ret = -1;
 unsigned int data;
 
     data = adc_read(AT91_ADC_SR);
     if (data & AT91_ADC_EOC(chan)) {
 	data = adc_read(AT91_ADC_CHR(chan));
 	data &= AT91_ADC_DATA;
-	ret=data;
+	ret = data;
     }
 
     return ret;
@@ -273,15 +274,15 @@ unsigned int data;
 //************************************************************
 void MyTimer(unsigned long d)
 {
-int rt=0;
+int rt = 0;
 
     timi--; 
     if (!timi) {
-	timi=timi_def;
+	timi = timi_def;
 	atomic_inc(&varta);
 	timi2--;
 	if (!timi2) {//20ms
-	    timi2=timi2_def;
+	    timi2 = timi2_def;
 	    if (atomic_read(&enable_adc)) {
 		if (atomic_read(&start_adc)) {
 		    rt = adc_data_ready(chan_set);
@@ -313,7 +314,7 @@ int rt=0;
 static int rchan_open(struct inode *inode, struct file *filp) {
 
 struct rchan_sio *sio;
-int ret=-ENODEV;
+int ret = -ENODEV;
 
     if (!Device_Open) {
 	Device_Open++;
@@ -332,9 +333,9 @@ int ret=-ENODEV;
 static int rchan_release(struct inode *inode, struct file *filp)
 {
 
-    if (Device_Open>0) Device_Open--;
+    if (Device_Open > 0) Device_Open--;
 
-    atomic_set(&start_adc, (int)0);
+    atomic_set(&start_adc,  (int)0);
     atomic_set(&enable_adc, (int)0);
 
     return 0;
@@ -348,7 +349,7 @@ static int rchan_ioctl(struct inode *inode, struct file *filp, unsigned int cmd,
 {
 #endif
 
-int ret=-EINVAL, ch;
+int ret = -EINVAL, ch;
 
 #ifdef HAVE_UNLOCKED_IOCTL
 	    lock_kernel();
@@ -359,7 +360,7 @@ int ret=-EINVAL, ch;
 		    ret = atomic_read(&varta);
 		break;
 		case ADC_CHAN_SELECT :
-		    if (ch!=chan_set) {
+		    if (ch != chan_set) {
 			ret = mux_chan(chan_set, 0);
 			chan_set = chan_set_in = ch;
 			ret = mux_chan(ch, 1);
@@ -370,24 +371,24 @@ int ret=-EINVAL, ch;
 		break;
 		case ADC_CHAN_READ :
 		    if (atomic_read(&enable_adc)) {
-			ret=atomic_read(&data_adc);
-		    } else ret=-1;
+			ret = atomic_read(&data_adc);
+		    } else ret = -1;
 		break;
 		case ADC_RESET :
 		    adc_reset();
-		    ret=0;
+		    ret = 0;
 		break;
 		case ADC_CHAN_START :
 		    adc_start_conv(chan_set);//ADC
-		    ret=0;
+		    ret = 0;
 		break;
 		case ADC_CHAN_STOP :
 		    adc_stop_conv(chan_set);//ADC
-		    ret=0;
+		    ret = 0;
 		break;
 		case ADC_ENABLE :
 		    atomic_set(&enable_adc, (int)1);
-		    ret=0;
+		    ret = 0;
 		break;
 		    default : ret = -EINVAL;
 	    }
@@ -438,7 +439,7 @@ static int __init rchan_init(void)
 {
 dev_t dev;
 int rc;
-struct file *fp=NULL;
+struct file *fp = NULL;
 
     printk(KERN_ALERT "\n");
 
@@ -450,7 +451,7 @@ struct file *fp=NULL;
 	Major = MAJOR(dev);
 	printk(KERN_ALERT "%s: device allocated with major number %d (ADC)\n",DevName,Major);
     } else {
-	if (register_chrdev_region(MKDEV(Major,0),1,DevName)<0){
+	if (register_chrdev_region(MKDEV(Major,0),1,DevName) < 0){
 	    printk(KERN_ALERT "%s: Registration failed\n",DevName);
 	    return 1;
 	}
@@ -466,7 +467,7 @@ struct file *fp=NULL;
     }
     CLASS_DEV_CREATE(adc_class, MKDEV(Major, 0), NULL, DevName);
 
-    my_dev_ready=1;
+    my_dev_ready = 1;
 //--------------------------------------------------------------------
 
     at91_adc_clk = clk_get(NULL,"adc_clk");
@@ -522,46 +523,46 @@ struct file *fp=NULL;
 //--------------------------------------------------------------------
 
 	Device_Open = 0;
-	my_msec=0;
+	my_msec = 0;
 	atomic_set(&varta, my_msec);
 	//ADC
 	adc_reset();
 	adc_init(chan_set);
 	//Timer start
-	timi=timi_def;
-	timi2=timi2_def;
+	timi  = timi_def;
+	timi2 = timi2_def;
 	init_timer(&my_timer);
 	my_timer.function = MyTimer;
-	my_timer.expires = jiffies + 10;	// 10 msec
+	my_timer.expires  = jiffies + 10;	// 10 msec
 	add_timer(&my_timer);
 
 	atomic_set(&enable_adc, (int)1);//ENABLE ADC
 
-	printk(KERN_ALERT "%s: %s\n",DevName,ABOUT_MODULE);
+	printk(KERN_ALERT "%s: %s\n", DevName, ABOUT_MODULE);
 
     return 0;
 
 err_out:
 
-    if (my_dev_ready==1) {
+    if (my_dev_ready == 1) {
 	CLASS_DEV_DESTROY(adc_class, MKDEV(Major, 0));
 	class_destroy(adc_class);
     }
 
-    if (own_proc_node!=NULL) {
+    if (own_proc_node != NULL) {
 	remove_proc_entry(NAME_NODE, NULL);
-	printk(KERN_ALERT "%s: /proc/%s removed.\n",DevName,NAME_NODE);
+	printk(KERN_ALERT "%s: /proc/%s removed.\n", DevName, NAME_NODE);
     }
 
     rc = -ENOMEM;
 
     if (adc_iomem_reg) release_mem_region(AT91SAM9260_BASE_ADC, 256);
 
-    if (at91_pioc_base!=NULL) iounmap(at91_pioc_base);
-    if (BaseAdrRAMADC!=NULL) iounmap(BaseAdrRAMADC);
+    if (at91_pioc_base != NULL) iounmap(at91_pioc_base);
+    if (BaseAdrRAMADC != NULL) iounmap(BaseAdrRAMADC);
 
-    if (ibuff!=NULL) kfree(ibuff);
-    if (ibuffw!=NULL) kfree(ibuffw);
+    if (ibuff != NULL) kfree(ibuff);
+    if (ibuffw != NULL) kfree(ibuffw);
 
     clk_disable(at91_adc_clk);
     clk_put(at91_adc_clk);
@@ -584,8 +585,8 @@ static void __exit rchan_exit(void)
     if (at91_pioc_base!=NULL) iounmap(at91_pioc_base);
     if (BaseAdrRAMADC!=NULL) iounmap(BaseAdrRAMADC);
 
-    if (ibuff!=NULL) kfree(ibuff);
-    if (ibuffw!=NULL) kfree(ibuffw);
+    if (ibuff != NULL) kfree(ibuff);
+    if (ibuffw != NULL) kfree(ibuffw);
 
     clk_disable(at91_adc_clk);
     clk_put(at91_adc_clk);
@@ -597,8 +598,8 @@ static void __exit rchan_exit(void)
     CLASS_DEV_DESTROY(adc_class, MKDEV(Major, 0));
     class_destroy(adc_class);
 
-    if (own_proc_node!=NULL) {
-	remove_proc_entry( NAME_NODE, NULL );
+    if (own_proc_node != NULL) {
+	remove_proc_entry(NAME_NODE, NULL);
 	printk(KERN_ALERT "%s: /proc/%s removed.\n",DevName,NAME_NODE);
     }
 
